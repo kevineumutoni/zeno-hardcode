@@ -33,10 +33,14 @@ class Run(models.Model):
 
 
 class RunInputFile(models.Model):
+
     FILE_TYPE_CHOICES = [
         ('pdf', 'PDF Document'),
         ('image', 'Image'),
-        ('text', 'Text Summary'),           
+        ('text', 'Text Summary'),
+        ('csv', 'CSV File'),      
+        ('excel', 'Excel File'), 
+        ('word', 'Word Document'), 
     ]
 
     run = models.ForeignKey(Run, on_delete=models.CASCADE, related_name='input_files')

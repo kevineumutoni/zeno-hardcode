@@ -27,13 +27,6 @@ import requests
 from django.utils import timezone
 from datetime import timedelta
 from rest_framework.views import APIView
-
-
-ZEN_AGENT_API_URL = os.environ.get("ZEN_AGENT_API_URL")
-MAX_CONVERSATIONS_PER_DAY = 5
-MAX_RUNS_PER_CONVERSATION_PER_DAY = 20
-
-
 import tempfile
 from PyPDF2 import PdfReader
 from PIL import Image
@@ -41,6 +34,31 @@ import pytesseract
 import csv
 import pandas as pd
 from docx import Document
+
+
+ZEN_AGENT_API_URL = os.environ.get("ZEN_AGENT_API_URL")
+MAX_CONVERSATIONS_PER_DAY = 5
+MAX_RUNS_PER_CONVERSATION_PER_DAY = 20
+
+
+def determine_file_type(file_obj):
+    """Determines the simplified file type for the database."""
+    file_name = file_obj.name.lower()
+    content_type = file_obj.content_type
+
+    if content_type == "application/pdf" or file_name.endswith(".pdf"):
+        return 'pdf'
+    elif content_type.startswith("image/") or file_name.endswith((".png", ".jpg", ".jpeg")):
+        return 'image'
+    elif file_name.endswith(".csv"):
+        return 'csv'
+    elif file_name.endswith((".xlsx", ".xls", ".xlsm")):
+        return 'excel'
+    elif file_name.endswith((".docx", ".doc")):
+        return 'word'
+    elif file_name.endswith(".txt") or content_type.startswith("text/"):
+        return 'text'
+    return 'text' 
 
 def extract_text_from_file(file_obj):
     """Extract text from PDF, image, CSV, Excel, Word, or plain text."""
@@ -74,7 +92,7 @@ def extract_text_from_file(file_obj):
             text = df.to_string(index=False)
 
         
-        elif file_name.endswith((".xlsx", ".xls")):
+        elif file_name.endswith((".xlsx", ".xls", ".xlsm")):
             df = pd.read_excel(tmp_path)
             text = df.to_string(index=False)
 
@@ -274,8 +292,6 @@ class StepViewSet(viewsets.ModelViewSet):
         return Response(serializer.data)
 
 
-
-
 class RunViewSet(viewsets.ModelViewSet):
     queryset = Run.objects.all()
     serializer_class = RunSerializer
@@ -291,10 +307,9 @@ class RunViewSet(viewsets.ModelViewSet):
         user_input = request.data.get('user_input', '').strip()
         conversation_id = request.data.get('conversation_id', None)
 
-    
         extracted_texts = []
         uploaded_files = request.FILES.getlist('files')
-    
+
         for file in uploaded_files:
             text = extract_text_from_file(file)
             if text and not text.startswith("["):
@@ -302,7 +317,6 @@ class RunViewSet(viewsets.ModelViewSet):
 
         file_context = "\n\n--- DOCUMENT BREAK ---\n\n".join(extracted_texts) if extracted_texts else None
 
-   
         conversation = None
         if conversation_id:
             try:
@@ -330,7 +344,12 @@ class RunViewSet(viewsets.ModelViewSet):
         )
 
         for file in uploaded_files:
-            RunInputFile.objects.create(run=run, file=file)
+            file_type = determine_file_type(file)
+            RunInputFile.objects.create(
+                run=run,
+                file=file,
+                file_type=file_type
+            )
 
         if file_context:
             run.final_output = f"__FILE_CONTEXT__:{file_context}"
