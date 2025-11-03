@@ -3,8 +3,11 @@ from users.models import User, Review
 from conversations.models import Conversation
 from agents.models import Agent, Tool
 from runs.models import RunInputFile, RunOutputArtifact, Run
-from conversations.models import Step 
+from conversations.models import Step
 from rest_framework.exceptions import ValidationError
+from django.utils.encoding import force_str
+from django.utils.http import urlsafe_base64_decode
+from django.contrib.auth.tokens import default_token_generator
 import re
 
 
@@ -36,6 +39,7 @@ class UserSerializer(serializers.ModelSerializer):
         user = User.objects.create_user(**validated_data, password=password)
         return user
 
+
 class PasswordResetRequestSerializer(serializers.Serializer):
     email = serializers.EmailField()
 
@@ -43,6 +47,7 @@ class PasswordResetRequestSerializer(serializers.Serializer):
         if not User.objects.filter(email=value, is_active=True).exists():
             raise ValidationError("Email not found or inactive.")
         return value
+
 
 class PasswordResetConfirmSerializer(serializers.Serializer):
     uidb64 = serializers.CharField()
@@ -79,6 +84,7 @@ class PasswordResetConfirmSerializer(serializers.Serializer):
         user.save()
         return user
 
+
 class ConversationSerializer(serializers.ModelSerializer):
     user = UserSerializer(read_only=True)
     user_id = serializers.PrimaryKeyRelatedField(
@@ -114,6 +120,7 @@ class AgentSerializer(serializers.ModelSerializer):
         model = Agent
         fields = ['agent_id', 'agent_name', 'description']
 
+
 class ToolSerializer(serializers.ModelSerializer):
     tool_name = serializers.CharField(required=True, allow_blank=False)
     tool_description = serializers.CharField(required=True, allow_blank=False)
@@ -123,33 +130,57 @@ class ToolSerializer(serializers.ModelSerializer):
         model = Tool
         fields = '__all__'
 
+
 class RunInputFileSerializer(serializers.ModelSerializer):
     class Meta:
         model = RunInputFile
         fields = ['id', 'file', 'file_type', 'description']
         read_only_fields = ['id']
 
+
 class RunOutputArtifactSerializer(serializers.ModelSerializer):
+    """
+    Handles chart/graph artifacts from agent (Ethiopia/Kenya forecasts).
+    Example `data`:
+        {
+            "x": ["2025", "2026", "2027"],
+            "y": [380, 320, 300],
+            "title": "Price Forecast",
+            "chart_type": "line",
+            "y_axis_label": "USD"
+        }
+    """
+    data = serializers.JSONField()  # Accepts any dict → perfect for charts
+    artifact_type = serializers.CharField(
+        default="chart",
+        read_only=True
+    )
+
     class Meta:
         model = RunOutputArtifact
         fields = ['id', 'artifact_type', 'data', 'title']
-        read_only_fields = ['id']
+        read_only_fields = ['id', 'artifact_type']
+
 
 class RunSerializer(serializers.ModelSerializer):
     input_files = RunInputFileSerializer(many=True, read_only=True)
     output_artifacts = RunOutputArtifactSerializer(many=True, read_only=True)
     conversation_id = serializers.PrimaryKeyRelatedField(
-        source = "conversation",
+        source="conversation",
         queryset=Conversation.objects.all(),
         required=False,
         allow_null=True
-    ) 
+    )
 
     class Meta:
         model = Run
         fields = '__all__'
-        read_only_fields = ['id', 'status', 'final_output', 'input_files', 'output_artifacts']
-        
+        read_only_fields = [
+            'id', 'status', 'final_output',
+            'input_files', 'output_artifacts'
+        ]
+
+
 class StepSerializer(serializers.ModelSerializer):
     conversation = serializers.PrimaryKeyRelatedField(
         queryset=Conversation.objects.all()
