@@ -35,7 +35,6 @@ import csv
 import pandas as pd
 from docx import Document
 
-
 ZEN_AGENT_API_URL = os.environ.get("ZEN_AGENT_API_URL")
 MAX_CONVERSATIONS_PER_DAY = 5
 MAX_RUNS_PER_CONVERSATION_PER_DAY = 20
@@ -63,7 +62,7 @@ def determine_file_type(file_obj):
 def extract_text_from_file(file_obj):
     """Extract text from PDF, image, CSV, Excel, Word, or plain text."""
     try:
-        if file_obj.size > 10 * 1024 * 1024:  
+        if file_obj.size > 50 * 2024 * 2024:  
             return "[File too large for processing]"
 
         file_name = file_obj.name.lower()
@@ -444,6 +443,16 @@ class RunViewSet(viewsets.ModelViewSet):
             
             else:
                 agent_response = result.get("response", "No response received.")
+
+            # === NEW: Save artifacts from agent response ===
+            artifacts = result.get("artifacts", [])
+            for artifact in artifacts:
+                RunOutputArtifact.objects.create(
+                    run=run,
+                    artifact_type="chart",
+                    data=artifact,
+                    title=artifact.get("title", "Chart")
+                )
 
             graph_url = result.get("graph_url")
             thought_process = result.get("thought_process", [])
